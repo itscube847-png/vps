@@ -1,0 +1,63 @@
+name: Free Ubuntu VPS with Public IPv4 (2025 Update)
+
+on:
+  workflow_dispatch:  # Manual run
+  schedule:
+    - cron: '*/30 * * * *'  # Auto-restart every 30 min
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4  # Latest 2025 version
+
+      - name: Setup ngrok (v3 Stable)
+        run: |
+          # Download latest ngrok v3 for Linux (2025 stable)
+          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+          tar xvzf ngrok-v3-stable-linux-amd64.tgz
+          sudo mv ngrok /usr/local/bin/
+          # Secure config
+          mkdir -p ~/.ngrok2
+          echo "version: 2
+authtoken: ${{ secrets.NGROK_TOKEN }}
+tunnels:
+  ssh:
+    proto: tcp
+    addr: 22" > ~/.ngrok2/ngrok.yml
+
+      - name: Enable & Start SSH + ngrok Tunnel
+        run: |
+          # Enable password auth
+          sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo systemctl restart ssh
+          # Set root password from secret
+          echo "root:${{ secrets.ROOT_PASSWORD }}" | sudo chpasswd
+          # Start tunnel in background
+          nohup ngrok tcp 22 --log=stdout > ngrok.log &
+          sleep 15  # Wait for tunnel
+          # Extract endpoint
+          ENDPOINT=$(grep -o 'tcp://[0-9a-z-]*\.ngrok\.io:[0-9]*' ngrok.log | head -1)
+          if [ -z "$ENDPOINT" ]; then
+            echo "Tunnel failed - check logs"
+            exit 1
+          fi
+          HOST=$(echo $ENDPOINT | cut -d'/' -f3 | cut -d':' -f1)
+          PORT=$(echo $ENDPOINT | cut -d':' -f3)
+          # Resolve real public IPv4
+          PUBLIC_IP=$(nslookup $HOST | grep 'Address:' | tail -1 | awk '{print $2}')
+          echo "Public IPv4 SSH: $ENDPOINT"
+          echo "Real IPv4: $PUBLIC_IP:$PORT"
+          echo "Connect: ssh root@$HOST -p $PORT (Password: ${{ secrets.ROOT_PASSWORD }})"
+          echo "ENDPOINT=$ENDPOINT" >> $GITHUB_ENV
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+      - name: Keep VM Alive (Heartbeat)
+        run: |
+          echo "VPS UP! Public IPv4: ${{ env.PUBLIC_IP }} | $(date)"
+          while true; do
+            echo "Heartbeat: $(date) - Tunnel active on ${{ env.PUBLIC_IP }}"
+            sleep 60
+          done
