@@ -22,7 +22,7 @@ jobs:
           # Secure config
           mkdir -p ~/.ngrok2
           echo "version: 2
-authtoken: ${{ secrets.NGROK_TOKEN }}
+authtoken: ${{ 2wD1szBRUm1tCq4FYoQzYCnJeQS_2wu4MwbEjK7L6mFj1ULh5 }}
 tunnels:
   ssh:
     proto: tcp
